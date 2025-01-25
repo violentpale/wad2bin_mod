@@ -25,6 +25,7 @@
 
 #define PATH_COUNT       4
 #define NULL_KEY_ARG    "--nullkey"
+#define CONVERT_ARG   	"--convert"
 
 int main(int argc, char **argv)
 {
@@ -49,7 +50,8 @@ int main(int argc, char **argv)
     
     if (argc < (PATH_COUNT + 1) || argc > (PATH_COUNT + 3) || strlen(argv[1]) >= MAX_PATH || strlen(argv[2]) >= MAX_PATH || strlen(argv[3]) >= MAX_PATH || \
         (strlen(argv[4]) + SD_CONTENT_PATH_MAX_LENGTH) >= MAX_PATH || (argc >= (PATH_COUNT + 2) && strlen(argv[5]) != 16) || (argc == (PATH_COUNT + 3) && (strlen(argv[6]) != strlen(NULL_KEY_ARG) || \
-        strcmp(argv[6], NULL_KEY_ARG) != 0)))
+        strcmp(argv[6], NULL_KEY_ARG) != 0)) || \
+		(argc == (PATH_COUNT + 4) && (strlen(argv[7]) != strlen(CONVERT_ARG) || strcmp(argv[7], CONVERT_ARG) != 0)))
     {
         printf("Usage: %s <keys.txt> <device.cert> <input WAD> <output dir> [<parent title ID> [" NULL_KEY_ARG "]]\n\n", argv[0]);
         printf("Paths must not exceed %u characters. Relative paths are supported.\n", MAX_PATH - 1);
@@ -159,12 +161,186 @@ int main(int argc, char **argv)
     
     printf("WAD package \"" OS_PRINT_STR "\" successfully unpacked.\n\n", paths[2]);
     
-    /* Get TMD common block and retrieve the title ID and required system version. */
+	/* Get TMD common block and retrieve the title ID and required system version. */
     tmd_common_block = tmdGetCommonBlock(tmd->data);
-    title_id = bswap_64(tmd_common_block->title_id);
+	title_id = bswap_64(tmd_common_block->title_id);
     required_ios = TITLE_LOWER(bswap_64(tmd_common_block->system_version));
+	
+	////////////////////////////////////////////////////////////
+	//MOD Start
+	////////////////////////////////////////////////////////////
+
+	//Read help TMD file
+	char tid_ascii[5] = {0};
+	utilsGenerateAsciiStringFromTitleIdLower(title_id, tid_ascii);
+
+	os_char_t path_temp[MAX_PATH];
+	os_snprintf(path_temp, MAX_PATH, "./TMD/%s/tmd.bin",tid_ascii);
+	FILE *file_temp = os_fopen(path_temp, OS_MODE_READ);
+	
+	os_fseek(file_temp, 0, SEEK_END);
+    u64 size_temp = os_ftell(file_temp);
+    rewind(file_temp);
+	
+	TitleMetadata *tmd_temp = (TitleMetadata*)calloc(1, sizeof(TitleMetadata));
+	tmdReadTitleMetadataFromFile(file_temp, size_temp, tmd_temp, cert_chain);
+	
+	if (file_temp) fclose(file_temp);
+
+	TmdCommonBlock *tmd_common_block_temp = tmdGetCommonBlock(tmd_temp->data);
+	TmdContentRecord *tmd_contents_temp = tmdGetTitleMetadataContentRecords(tmd_common_block_temp);
+	u16 content_count_temp = bswap_16(tmd_common_block_temp->content_count);
+	
+	//Read help TIK file
+	os_snprintf(path_temp, MAX_PATH, "./TMD/%s/tik.bin",tid_ascii);
+	file_temp = os_fopen(path_temp, OS_MODE_READ);
+	
+	os_fseek(file_temp, 0, SEEK_END);
+    size_temp = os_ftell(file_temp);
+    rewind(file_temp);
+	
+	Ticket *ticket_temp = (Ticket*)calloc(1, sizeof(Ticket));
+	tikReadTicketFromFile(file_temp, size_temp, ticket_temp, cert_chain);
+	if (file_temp) fclose(file_temp);
+	
+	//File0 SHA test
+	os_snprintf(path_temp, MAX_PATH, "./wad2bin_wad_data/00000000.app");
+	file_temp = os_fopen(path_temp, OS_MODE_READ);
+	
+	os_fseek(file_temp, 0, SEEK_END);
+    size_temp = os_ftell(file_temp);
+    rewind(file_temp);
+	
+	u8 *data_temp = (u8*)malloc(size_temp);
+	fread(data_temp, 1, size_temp, file_temp);
+	
+	if (file_temp) fclose(file_temp);
+	
+	u8 hash_temp[SHA1_HASH_SIZE] = {0};
+	mbedtls_sha1(data_temp,size_temp,hash_temp);
+	
+	if (memcmp(hash_temp, tmd_contents_temp[0].hash, SHA1_HASH_SIZE) != 0)
+    {
+		printf("File-0 SHA-1 not found in help TMD file!\nProcess failed!\n\n");
+        goto out;
+    }
+	
+	//Read original TMD file
+	TmdContentRecord *tmd_contents = NULL;
+	tmd_contents = tmdGetTitleMetadataContentRecords(tmd_common_block);
+	u16 content_count = bswap_16(tmd_common_block->content_count);
+	
+	//File2 SHA and index test
+	u16 cnt_idx = 0;
+	for(u16 i = content_count-1; i > 1; i--)
+	{	
+		cnt_idx = bswap_16(tmd_contents[i].index);
+		os_snprintf(path_temp, MAX_PATH, "./wad2bin_wad_data/%08" PRIx16 ".app", cnt_idx);
+		file_temp = os_fopen(path_temp, OS_MODE_READ);
+		if (file_temp) break;
+	}
+	
+	os_fseek(file_temp, 0, SEEK_END);
+    size_temp = os_ftell(file_temp);
+    rewind(file_temp);
+	
+	data_temp = (u8*)realloc(data_temp, size_temp);
+	fread(data_temp, 1, size_temp, file_temp);
+	
+	if (file_temp) fclose(file_temp);
+	
+	mbedtls_sha1(data_temp,size_temp,hash_temp);
+	
+	u16 number_temp = 0;
+	for(u16 i = 1; i < content_count_temp; i++)
+	{
+		if (memcmp(hash_temp, tmd_contents_temp[i].hash, SHA1_HASH_SIZE) == 0) number_temp = i;
+	}
+	if ((number_temp == 0) || (cnt_idx != bswap_16(tmd_contents_temp[number_temp].index)))
+	{
+		printf("File-2 SHA-1 not found in help TMD file, or index is not the same!\nProcess failed!\n\n");
+        goto out;
+    }
+	
+	//File1 SHA size test
+	os_snprintf(path_temp, MAX_PATH, "./wad2bin_wad_data/%08" PRIx16 ".app", cnt_idx - 1);
+	file_temp = os_fopen(path_temp, OS_MODE_READ);
+
+	os_fseek(file_temp, 0, SEEK_END);
+    size_temp = os_ftell(file_temp);
+    rewind(file_temp);
+	
+	number_temp--;
+	u64 size_tmd_temp = bswap_64(tmd_contents_temp[number_temp].size);
+	
+	if (size_temp > size_tmd_temp)
+	{
+		printf("File1 size is bigger than TMD size, truncating File1...\n");
+		size_temp = size_tmd_temp;
+	}
+	
+	data_temp = (u8*)realloc(data_temp, size_temp);
+	fread(data_temp, 1, size_temp, file_temp);
+		
+	if (file_temp) fclose(file_temp);
+		
+	os_remove(path_temp);
+				
+ 	//File1 main modification and SHA test
+	u8 search[3]={0x2F,0x73,0x5A};// search string "/sZ"
+	for (u64 i = 0; i < size_temp-2; i++)
+	{
+		if ((data_temp[i] == search[0]) && (data_temp[i+1] == search[1]) && (data_temp[i+2] == search[2]))
+		{			
+			data_temp[i+4] = 0x50;
+			break;
+		}		
+	}
+	
+	mbedtls_sha1(data_temp,size_temp,hash_temp);
+	if (memcmp(hash_temp, tmd_contents_temp[number_temp].hash, SHA1_HASH_SIZE) == 0) goto file1save;
+	
+	//File1 modification 1 and SHA test
+	data_temp[0] = 0x55;
+	data_temp[1] = 0xAA;
+	
+	mbedtls_sha1(data_temp,size_temp,hash_temp);
+	if (memcmp(hash_temp, tmd_contents_temp[number_temp].hash, SHA1_HASH_SIZE) == 0) goto file1save;
+	
+	//File1 modification 2 and SHA test
+	for (u8 i = 0; i < 0xFF; i++)
+	{
+		data_temp[0x67] = i;
+		mbedtls_sha1(data_temp,size_temp,hash_temp);
+		if (memcmp(hash_temp, tmd_contents_temp[number_temp].hash, SHA1_HASH_SIZE) == 0) goto file1save;
+	}
+	
+	//File1 modification did not helped...
+	file_temp = os_fopen(path_temp, OS_MODE_WRITE);
+	fwrite(data_temp,1,size_temp,file_temp);
+		
+	if (file_temp) fclose(file_temp);
+	
+	printf("File-1 SHA-1 not found in help TMD file!\nProcess failed!\n\n");
+	system("pause");
+    goto out;
     
-    /* Start conversion process. */
+file1save:
+	//File1 save
+	file_temp = os_fopen(path_temp, OS_MODE_WRITE);
+	fwrite(data_temp,1,size_temp,file_temp);
+		
+	if (file_temp) fclose(file_temp);
+	
+	//TMD and Ticket from help files
+	tmd = tmd_temp;
+	ticket = ticket_temp;
+
+	////////////////////////////////////////////////////////////
+	//MOD End
+	////////////////////////////////////////////////////////////
+	
+	/* Start conversion process. */
     tid_upper = TITLE_UPPER(title_id);
     if (tid_upper == TITLE_TYPE_DLC)
     {
