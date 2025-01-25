@@ -3,14 +3,16 @@ Converts Rock Band 2 (USA) Split Wii WAD packages to Rock Band 3 (Europe) backup
 
 Usage:
 --------------
+```
 wad2bin <keys.txt> <device.cert> <input WAD> <output dir> [<parent title ID> [--nullkey]]
+```
 
-Paths must not exceed 259 characters. Relative paths are supported.
-The required directory tree for the *.bin file(s) will be created at the output directory.
-You can set your SD card root directory as the output directory.
-Parent title ID shouls be 00010000535A4250 for Rock Band 3 (Europe)
-Parameter "--nullkey" shouls be set
-TMD folder should be in a same folder as wad2bin
+* Paths must not exceed 259 characters. Relative paths are supported.
+* The required directory tree for the *.bin file(s) will be created at the output directory.
+* You can set your SD card root directory as the output directory.
+* Parent title ID shouls be 00010000535A4250 for Rock Band 3 (Europe).
+* Parameter "--nullkey" shouls be set.
+* TMD folder should be in a same folder as wad2bin.
 
 Supported DLCs:
 --------------
