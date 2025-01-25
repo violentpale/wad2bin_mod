@@ -262,7 +262,7 @@ int main(int argc, char **argv)
         goto out;
     }
 	
-	//File1 SHA size test
+	//File1 open
 	os_snprintf(path_temp, MAX_PATH, "./wad2bin_wad_data/%08" PRIx16 ".app", cnt_idx - 1);
 	file_temp = os_fopen(path_temp, OS_MODE_READ);
 
@@ -270,24 +270,58 @@ int main(int argc, char **argv)
     size_temp = os_ftell(file_temp);
     rewind(file_temp);
 	
-	number_temp--;
-	u64 size_tmd_temp = bswap_64(tmd_contents_temp[number_temp].size);
-	
-	if (size_temp > size_tmd_temp)
-	{
-		printf("File1 size is bigger than TMD size, truncating File1...\n");
-		size_temp = size_tmd_temp;
-	}
-	
 	data_temp = (u8*)realloc(data_temp, size_temp);
 	fread(data_temp, 1, size_temp, file_temp);
-		
+	
 	if (file_temp) fclose(file_temp);
-		
+	
 	os_remove(path_temp);
-				
+	
+	//File1 size comparsion
+	number_temp--;
+	u64 size_tmd_temp = bswap_64(tmd_contents_temp[number_temp].size);
+	signed char size_diff = size_temp - size_tmd_temp;
+	
+	//File1 "pack_name" modification
+	if (size_diff > 2)
+	{
+		printf("File1 pack_name modification...\n");
+		u8 s[] = {0x0D,0x0A,0x20};
+		u64 p1 = 0, p2 = 0;
+		for (u64 i = size_temp - 2; i > size_temp - 128; i--)
+		{
+			if ((data_temp[i] == s[0]) && (data_temp[i+1] == s[1]) && (data_temp[i+2] == s[2]))
+			{
+				if (p2 == 0) p2 = i;
+				else {
+					p1 = i; 
+					break;
+				}
+			}		
+		}
+		size_temp = size_temp - (p2 - p1);
+		u8 *d = (u8*)malloc(size_temp);
+		memcpy(d, data_temp, p1);
+		memcpy(d + p1, data_temp + p2, size_temp - p1);
+		data_temp = (u8*)realloc(data_temp, size_temp);
+		memcpy(data_temp ,d ,size_temp);
+	}
+
+	//File1 resize
+	size_diff = size_temp - size_tmd_temp;
+	
+	if ((size_diff > 0) && (size_diff < 3))
+	{
+		printf("File1 size is bigger than TMD size, truncating File1...\n");
+		size_temp = size_temp - size_diff;
+		u8 *d = (u8*)malloc(size_temp);
+		memcpy(d, data_temp, size_temp);
+		data_temp = (u8*)realloc(data_temp, size_temp);
+		memcpy(data_temp ,d ,size_temp);
+	}
+	
  	//File1 main modification and SHA test
-	u8 search[3]={0x2F,0x73,0x5A};// search string "/sZ"
+	u8 search[]={0x2F,0x73,0x5A};// search string "/sZ"
 	for (u64 i = 0; i < size_temp-2; i++)
 	{
 		if ((data_temp[i] == search[0]) && (data_temp[i+1] == search[1]) && (data_temp[i+2] == search[2]))
@@ -322,7 +356,6 @@ int main(int argc, char **argv)
 	if (file_temp) fclose(file_temp);
 	
 	printf("File-1 SHA-1 not found in help TMD file!\nProcess failed!\n\n");
-	system("pause");
     goto out;
     
 file1save:

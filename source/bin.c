@@ -578,7 +578,7 @@ bool binGenerateIndexedPackagesFromUnpackedInstallableWadPackage(os_char_t *unpa
         cnt_fd = os_fopen(unpacked_wad_path, OS_MODE_READ);
         if (!cnt_fd)
         {
-            //MOD:printf("Content \"" OS_PRINT_STR "\" not found (%d). Skipping...\n\n", unpacked_wad_path, errno);
+            //printf("Content \"" OS_PRINT_STR "\" not found (%d). Skipping...\n\n", unpacked_wad_path, errno);//MOD_disabled
             continue;
         }
         
