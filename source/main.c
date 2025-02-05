@@ -177,6 +177,11 @@ int main(int argc, char **argv)
 	os_char_t path_temp[MAX_PATH];
 	os_snprintf(path_temp, MAX_PATH, "./TMD/%s/tmd.bin",tid_ascii);
 	FILE *file_temp = os_fopen(path_temp, OS_MODE_READ);
+    if (!file_temp)
+    {
+        ERROR_MSG("Unable to open help TMD file for reading!.");
+        goto out;
+    }
 	
 	os_fseek(file_temp, 0, SEEK_END);
     u64 size_temp = os_ftell(file_temp);
@@ -194,6 +199,11 @@ int main(int argc, char **argv)
 	//Read help TIK file
 	os_snprintf(path_temp, MAX_PATH, "./TMD/%s/tik.bin",tid_ascii);
 	file_temp = os_fopen(path_temp, OS_MODE_READ);
+    if (!file_temp)
+    {
+        ERROR_MSG("Unable to open help TIK file for reading!.");
+        goto out;
+    }
 	
 	os_fseek(file_temp, 0, SEEK_END);
     size_temp = os_ftell(file_temp);
@@ -206,6 +216,11 @@ int main(int argc, char **argv)
 	//File0 SHA test
 	os_snprintf(path_temp, MAX_PATH, "./wad2bin_wad_data/00000000.app");
 	file_temp = os_fopen(path_temp, OS_MODE_READ);
+    if (!file_temp)
+    {
+        ERROR_MSG("Unable to open 00000000.app file for reading!.");
+        goto out;
+    }
 	
 	os_fseek(file_temp, 0, SEEK_END);
     size_temp = os_ftell(file_temp);
@@ -230,7 +245,7 @@ int main(int argc, char **argv)
 	tmd_contents = tmdGetTitleMetadataContentRecords(tmd_common_block);
 	u16 content_count = bswap_16(tmd_common_block->content_count);
 	
-	//File2 SHA and index test
+	//File2 SHA-1 and index test
 	u16 cnt_idx = 0;
 	for(u16 i = content_count-1; i > 1; i--)
 	{	
@@ -239,6 +254,11 @@ int main(int argc, char **argv)
 		file_temp = os_fopen(path_temp, OS_MODE_READ);
 		if (file_temp) break;
 	}
+    if (!file_temp)
+    {
+        ERROR_MSG("Unable to open song .app file for reading!.");
+        goto out;
+    }
 	
 	os_fseek(file_temp, 0, SEEK_END);
     size_temp = os_ftell(file_temp);
@@ -265,7 +285,12 @@ int main(int argc, char **argv)
 	//File1 open
 	os_snprintf(path_temp, MAX_PATH, "./wad2bin_wad_data/%08" PRIx16 ".app", cnt_idx - 1);
 	file_temp = os_fopen(path_temp, OS_MODE_READ);
-
+    if (!file_temp)
+    {
+        ERROR_MSG("Unable to open song metadata .app file for reading!.");
+        goto out;
+    }
+	
 	os_fseek(file_temp, 0, SEEK_END);
     size_temp = os_ftell(file_temp);
     rewind(file_temp);
@@ -321,15 +346,13 @@ int main(int argc, char **argv)
 	}
 	
  	//File1 main modification and SHA test
-	u8 search[]={0x2F,0x73,0x5A};// search string "/sZ"
-	for (u64 i = 0; i < size_temp-2; i++)
-	{
-		if ((data_temp[i] == search[0]) && (data_temp[i+1] == search[1]) && (data_temp[i+2] == search[2]))
-		{			
-			data_temp[i+4] = 0x50;
-			break;
-		}		
-	}
+	u8 search[]={0x64,0x6C,0x63,0x2F,0x73,0x5A};// search string "dlc/sZ"
+    for (u64 i = 0; i <= size_temp - 6; i++) {
+        for (u8 j = 0; j < 6; j++) {
+            if (data_temp[i + j] != search[j]) break;
+			if (j == 5) data_temp[i + 7] = 0x50;
+        }
+    }
 	
 	mbedtls_sha1(data_temp,size_temp,hash_temp);
 	if (memcmp(hash_temp, tmd_contents_temp[number_temp].hash, SHA1_HASH_SIZE) == 0) goto file1save;
