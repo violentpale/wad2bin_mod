@@ -12,7 +12,7 @@ wad2bin <keys.txt> <device.cert> <input WAD> <output dir> [<parent title ID> [--
 * You can set your SD card root directory as the output directory.
 * Parent title ID shouls be 00010000535A4250 for using DLC with Rock Band 3 (Europe) game.
 * Parameter "--nullkey" shouls be set.
-* TMD folder with zSxx sub-folders should be in a same folder as wad2bin or gui.
+* TMD folder with sZxx sub-folders should be in a same folder as wad2bin or gui.
 
 Supported DLCs:
 --------------
